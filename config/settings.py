@@ -20,3 +20,12 @@ DAY_MINUTES = 1440
 MAX_SLEEP_START = 4 * 60  # 04:00
 
 TELEGRAM_BOT_TOKEN = "8513105895:AAH2n86RKKu01ypbgwLE80iygjgeBjR5VMQ"
+
+
+from datetime import timedelta
+import os
+
+SLEEP_REMINDER_DELAY = timedelta(
+    # seconds=int(os.getenv("SLEEP_REMINDER_SECONDS", 10 * 60 * 60))
+    seconds= 5
+)

@@ -13,21 +13,44 @@ from telegram.ext import (
 )
 
 from bot.state import get_state
-from datetime import datetime
-from bot.keyboards import start_keyboard, preview_range_keyboard, record_keyboard
+from datetime import datetime, timedelta
+
+from bot.keyboards import (
+    start_keyboard, 
+    preview_range_keyboard, 
+    record_keyboard, 
+    sleep_resolution_keyboard
+)
 from app import sleep_service
 
+from config.settings import SLEEP_REMINDER_DELAY
 
 
 from app.preview_service import render_timeline_png
 from domain.ranges import last_n_days, last_month
 
+# from datetime import timedelta
+# import os
+
+# SLEEP_REMINDER_DELAY = timedelta(
+#     seconds=int(os.getenv("SLEEP_REMINDER_SECONDS", 10 * 60 * 60))
+# )
 
 logger = logging.getLogger(__name__)
 
 
+def cleanup_sleep_state(state):
+    state.sleep_start_dt = None
+
+    if state.sleep_reminder_job_id:
+        # Job already ran, but good hygiene
+        state.sleep_reminder_job_id = None
+
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣")
+    print("JobQueue:", context.job_queue)
     user_id = update.effective_user.id
     logger.debug("start command received from user_id=%s", user_id)
 
@@ -105,6 +128,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now = datetime.now()
         state.sleep_start_dt = now
 
+        job = context.job_queue.run_once(
+            callback=sleep_reminder_job,
+            # when=10 * 60 * 60,  # 10 hours
+            when=SLEEP_REMINDER_DELAY,
+            data={"user_id": user_id},
+            name=f"sleep_reminder_{user_id}",
+        )
+
+        state.sleep_reminder_job_id = job.name
+
         await query.message.reply_text(
             f"😴 Sleep start recorded at {now.strftime('%Y-%m-%d %H:%M')}.\n"
             f"Press ⏰ Record Wake Up when you wake up.",
@@ -118,7 +151,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=record_keyboard(),
             )
             return
-
+        
         start_dt = state.sleep_start_dt
         end_dt = datetime.now()
 
@@ -142,6 +175,43 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=record_keyboard(),
         )
 
+
+
+    elif data == "sleep_fix_time":
+        state.awaiting_wake_time = True
+        await query.message.reply_text(
+            "Send wake up time like:\n`2026-01-21 07:30`",
+            parse_mode="Markdown",
+        )
+
+
+    elif data == "sleep_fix_duration":
+        state.awaiting_sleep_duration = True
+        await query.message.reply_text(
+            "Enter sleep duration in hours (e.g. `7.5`)",
+            parse_mode="Markdown",
+        )
+
+
+    elif data == "sleep_fix_8h":
+        start_dt = state.sleep_start_dt
+        end_dt = start_dt + timedelta(hours=8)
+
+        sleep_service.record_sleep_end(
+            user_id=user_id,
+            start_dt=start_dt,
+            end_dt=end_dt,
+        )
+
+        cleanup_sleep_state(state)
+
+        await query.message.reply_text(
+            "✅ Recorded 8-hour sleep.",
+            reply_markup=record_keyboard(),
+        )
+
+
+
     else:
         logger.warning(
             "unknown callback data: user_id=%s data=%s",
@@ -149,10 +219,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data,
         )
 
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    text = update.message.text
+    text = update.message.text.strip()
 
     logger.debug(
         "text message received: user_id=%s text=%r",
@@ -162,9 +231,74 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state = get_state(user_id)
 
+    # -----------------------
+    # Wake-up time input
+    # -----------------------
+    if state.awaiting_wake_time:
+        state.awaiting_wake_time = False
+
+        try:
+            wake_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid format. Use:\n`YYYY-MM-DD HH:MM`",
+                parse_mode="Markdown",
+            )
+            return
+
+        if state.sleep_start_dt is None:
+            await update.message.reply_text("❌ No active sleep session.")
+            return
+
+        sleep_service.record_sleep_end(
+            user_id=user_id,
+            start_dt=state.sleep_start_dt,
+            end_dt=wake_dt,
+        )
+
+        cleanup_sleep_state(state)
+
+        await update.message.reply_text("✅ Sleep saved.")
+        return
+
+    # -----------------------
+    # Sleep duration input
+    # -----------------------
+    if state.awaiting_sleep_duration:
+        state.awaiting_sleep_duration = False
+
+        try:
+            hours = float(text)
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid duration. Enter a number like `7.5`.",
+                parse_mode="Markdown",
+            )
+            return
+
+        if state.sleep_start_dt is None:
+            await update.message.reply_text("❌ No active sleep session.")
+            return
+
+        end_dt = state.sleep_start_dt + timedelta(hours=hours)
+
+        sleep_service.record_sleep_end(
+            user_id=user_id,
+            start_dt=state.sleep_start_dt,
+            end_dt=end_dt,
+        )
+
+        cleanup_sleep_state(state)
+
+        await update.message.reply_text("✅ Sleep saved.")
+        return
+
+    # -----------------------
+    # Custom preview range
+    # -----------------------
     if not state.awaiting_custom_range:
         logger.debug(
-            "ignoring text (not awaiting custom range): user_id=%s",
+            "ignoring text (no input mode): user_id=%s",
             user_id,
         )
         return
@@ -173,23 +307,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         start, end = [t.strip() for t in text.split("to")]
-        logger.debug(
-            "parsed custom range: user_id=%s start=%s end=%s",
-            user_id,
-            start,
-            end,
-        )
     except ValueError:
-        logger.warning(
-            "invalid custom range format: user_id=%s text=%r",
-            user_id,
-            text,
-        )
         await update.message.reply_text(
             "Invalid format. Use:\n`YYYY-MM-DD to YYYY-MM-DD`",
             parse_mode="Markdown",
         )
         return
+
+    logger.debug(
+        "parsed custom range: user_id=%s start=%s end=%s",
+        user_id,
+        start,
+        end,
+    )
 
     await send_or_update_preview(
         update=update,
@@ -197,6 +327,80 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         start_date=start,
         end_date=end,
     )
+
+
+# async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     user_id = update.message.from_user.id
+#     text = update.message.text
+
+#     logger.debug(
+#         "text message received: user_id=%s text=%r",
+#         user_id,
+#         text,
+#     )
+
+#     state = get_state(user_id)
+    
+#     if state.awaiting_wake_time:
+#         state.awaiting_wake_time = False
+
+#         wake_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+#         start_dt = state.sleep_start_dt
+
+#         sleep_service.record_sleep_end(
+#             user_id=user_id,
+#             start_dt=start_dt,
+#             end_dt=wake_dt,
+#         )
+
+#         cleanup_sleep_state(state)
+
+#         await update.message.reply_text("✅ Sleep saved.")
+
+
+#     if state.awaiting_sleep_duration:
+#         # TODO: text validation
+#         hours = float(text)
+#         end_dt = state.sleep_start_dt + timedelta(hours=hours)
+
+#         sleep_service.record_sleep_end(...)
+#         cleanup_sleep_state(state)
+
+#     if not state.awaiting_custom_range:
+#         logger.debug(
+#             "ignoring text (not awaiting custom range): user_id=%s",
+#             user_id,
+#         )
+#         return
+
+#     state.awaiting_custom_range = False
+
+#     try:
+#         start, end = [t.strip() for t in text.split("to")]
+#         logger.debug(
+#             "parsed custom range: user_id=%s start=%s end=%s",
+#             user_id,
+#             start,
+#             end,
+#         )
+#     except ValueError:
+#         logger.warning(
+#             "invalid custom range format: user_id=%s text=%r",
+#             user_id,
+#             text,
+#         )
+#         await update.message.reply_text(
+#             "Invalid format. Use:\n`YYYY-MM-DD to YYYY-MM-DD`",
+#             parse_mode="Markdown",
+#         )
+#         return
+
+#     await send_or_update_preview(
+#         update=update,
+#         context=context,
+#         start_date=start,
+#         end_date=end,
+#     )
 
 
 def register_handlers(app):
@@ -270,3 +474,25 @@ async def send_or_update_preview(
             msg.message_id,
             user_id,
         )
+
+
+async def sleep_reminder_job(context: ContextTypes.DEFAULT_TYPE):
+    job_data = context.job.data
+    user_id = job_data["user_id"]
+
+    state = get_state(user_id)
+
+    # User already woke up → do nothing
+    if state.sleep_start_dt is None:
+        return
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=(
+            "⏰ You started sleep 10 hours ago.\n\n"
+            "How would you like to record your wake up?"
+        ),
+        reply_markup=sleep_resolution_keyboard(),
+    )
+
+

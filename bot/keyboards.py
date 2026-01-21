@@ -34,3 +34,10 @@ def record_keyboard():
             InlineKeyboardButton("⬅️ Back", callback_data="back_home"),
         ],
     ])
+
+def sleep_resolution_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🕘 Enter wake up time", callback_data="sleep_fix_time")],
+        [InlineKeyboardButton("⏱ Enter sleep duration", callback_data="sleep_fix_duration")],
+        [InlineKeyboardButton("😴 Use 8-hour sleep", callback_data="sleep_fix_8h")],
+    ])

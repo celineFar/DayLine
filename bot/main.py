@@ -4,6 +4,7 @@ from telegram.ext import Application
 from config.settings import TELEGRAM_BOT_TOKEN
 from bot.handlers import register_handlers
 import logging
+from telegram.ext import Application, JobQueue
 
 
 logging.basicConfig(
@@ -26,8 +27,10 @@ logging.getLogger("telegram").setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 
+job_queue = JobQueue()
+
 def main():
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).job_queue(job_queue).build()
     register_handlers(app)
     app.run_polling()
 
