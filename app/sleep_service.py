@@ -26,7 +26,7 @@ def record_sleep_end(
     """
     Takes concrete datetimes and persists them as one or more Sleep rows.
     """
-    if end_dt <= start_dt:
+    if end_dt < start_dt:
         # If user hits wake accidentally before start, treat as invalid
         raise ValueError("Wake time must be after sleep start time.")
 

@@ -24,3 +24,6 @@ state/*.json
 
 # markdown files
 *.md
+
+# State directory
+state/

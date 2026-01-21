@@ -50,3 +50,27 @@ def overwrite_confirm_keyboard():
             InlineKeyboardButton("❌ Cancel", callback_data="cancel_overwrite"),
         ]
     ])
+
+
+def sleep_start_choice_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("😴 Now", callback_data="sleep_start_now"),
+            InlineKeyboardButton("✏️ Enter manually", callback_data="sleep_start_manual"),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Back", callback_data="record"),
+        ],
+    ])
+
+
+def wake_up_choice_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⏰ Now", callback_data="sleep_end_now"),
+            InlineKeyboardButton("✏️ Enter manually", callback_data="sleep_end_manual"),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Back", callback_data="record"),
+        ],
+    ])
