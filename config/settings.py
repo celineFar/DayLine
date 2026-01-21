@@ -27,5 +27,5 @@ import os
 
 SLEEP_REMINDER_DELAY = timedelta(
     # seconds=int(os.getenv("SLEEP_REMINDER_SECONDS", 10 * 60 * 60))
-    seconds= 5
+    seconds= 60 * 10
 )

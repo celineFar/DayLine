@@ -41,3 +41,12 @@ def sleep_resolution_keyboard():
         [InlineKeyboardButton("⏱ Enter sleep duration", callback_data="sleep_fix_duration")],
         [InlineKeyboardButton("😴 Use 8-hour sleep", callback_data="sleep_fix_8h")],
     ])
+
+
+def overwrite_confirm_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Yes", callback_data="confirm_overwrite"),
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel_overwrite"),
+        ]
+    ])

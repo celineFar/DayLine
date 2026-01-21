@@ -19,7 +19,8 @@ from bot.keyboards import (
     start_keyboard, 
     preview_range_keyboard, 
     record_keyboard, 
-    sleep_resolution_keyboard
+    sleep_resolution_keyboard,
+    overwrite_confirm_keyboard
 )
 from app import sleep_service
 
@@ -124,13 +125,41 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Welcome! What would you like to do?",
             reply_markup=start_keyboard(),
         )
+    # elif data == "sleep_start":
+    #     now = datetime.now()
+    #     state.sleep_start_dt = now
+
+    #     job = context.job_queue.run_once(
+    #         callback=sleep_reminder_job,
+    #         # when=10 * 60 * 60,  # 10 hours
+    #         when=SLEEP_REMINDER_DELAY,
+    #         data={"user_id": user_id},
+    #         name=f"sleep_reminder_{user_id}",
+    #     )
+
+    #     state.sleep_reminder_job_id = job.name
+
+    #     await query.message.reply_text(
+    #         f"😴 Sleep start recorded at {now.strftime('%Y-%m-%d %H:%M')}.\n"
+    #         f"Press ⏰ Record Wake Up when you wake up.",
+    #         reply_markup=record_keyboard(),
+    #     )
+
     elif data == "sleep_start":
+        if state.sleep_start_dt is not None:
+            state.pending_action = "sleep_start"
+            await query.message.reply_text(
+                "⚠️ You already have a sleep session started.\n"
+                "Do you want to overwrite the existing start time?",
+                reply_markup=overwrite_confirm_keyboard(),
+            )
+            return
+
         now = datetime.now()
         state.sleep_start_dt = now
 
         job = context.job_queue.run_once(
             callback=sleep_reminder_job,
-            # when=10 * 60 * 60,  # 10 hours
             when=SLEEP_REMINDER_DELAY,
             data={"user_id": user_id},
             name=f"sleep_reminder_{user_id}",
@@ -144,6 +173,39 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=record_keyboard(),
         )
 
+
+    # elif data == "sleep_end":
+    #     if state.sleep_start_dt is None:
+    #         await query.message.reply_text(
+    #             "I don’t have a sleep start time yet. Press 😴 Record Sleep first.",
+    #             reply_markup=record_keyboard(),
+    #         )
+    #         return
+        
+    #     start_dt = state.sleep_start_dt
+    #     end_dt = datetime.now()
+
+    #     try:
+    #         sleep_service.record_sleep_end(
+    #             user_id=user_id,
+    #             start_dt=start_dt,
+    #             end_dt=end_dt,
+    #         )
+    #     except Exception as e:
+    #         await query.message.reply_text(
+    #             f"Failed to save sleep: {e}",
+    #             reply_markup=record_keyboard(),
+    #         )
+    #         return
+
+    #     state.sleep_start_dt = None
+
+    #     await query.message.reply_text(
+    #         f"✅ Saved sleep: {start_dt.strftime('%Y-%m-%d %H:%M')} → {end_dt.strftime('%Y-%m-%d %H:%M')}",
+    #         reply_markup=record_keyboard(),
+    #     )
+
+
     elif data == "sleep_end":
         if state.sleep_start_dt is None:
             await query.message.reply_text(
@@ -151,30 +213,58 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=record_keyboard(),
             )
             return
-        
-        start_dt = state.sleep_start_dt
-        end_dt = datetime.now()
 
-        try:
+        state.pending_action = "sleep_end"
+        await query.message.reply_text(
+            "⚠️ Are you sure you want to record wake up now?",
+            reply_markup=overwrite_confirm_keyboard(),
+        )
+
+    elif data == "confirm_overwrite":
+        action = state.pending_action
+        state.pending_action = None
+
+        if action == "sleep_start":
+            now = datetime.now()
+            state.sleep_start_dt = now
+
+            job = context.job_queue.run_once(
+                callback=sleep_reminder_job,
+                when=SLEEP_REMINDER_DELAY,
+                data={"user_id": user_id},
+                name=f"sleep_reminder_{user_id}",
+            )
+            state.sleep_reminder_job_id = job.name
+
+            await query.message.reply_text(
+                f"😴 Sleep start overwritten.\n"
+                f"New start time: {now.strftime('%Y-%m-%d %H:%M')}",
+                reply_markup=record_keyboard(),
+            )
+
+        elif action == "sleep_end":
+            start_dt = state.sleep_start_dt
+            end_dt = datetime.now()
+
             sleep_service.record_sleep_end(
                 user_id=user_id,
                 start_dt=start_dt,
                 end_dt=end_dt,
             )
-        except Exception as e:
+
+            cleanup_sleep_state(state)
+
             await query.message.reply_text(
-                f"Failed to save sleep: {e}",
+                f"✅ Saved sleep: {start_dt.strftime('%Y-%m-%d %H:%M')} → {end_dt.strftime('%Y-%m-%d %H:%M')}",
                 reply_markup=record_keyboard(),
             )
-            return
 
-        state.sleep_start_dt = None
-
+    elif data == "cancel_overwrite":
+        state.pending_action = None
         await query.message.reply_text(
-            f"✅ Saved sleep: {start_dt.strftime('%Y-%m-%d %H:%M')} → {end_dt.strftime('%Y-%m-%d %H:%M')}",
+            "❌ Action cancelled.",
             reply_markup=record_keyboard(),
         )
-
 
 
     elif data == "sleep_fix_time":

@@ -21,3 +21,6 @@ state/*.json
 
 # Images (if not source assets)
 *.png
+
+# markdown files
+*.md

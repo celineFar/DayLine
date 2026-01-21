@@ -24,6 +24,8 @@ class UserState:
     awaiting_wake_time: bool = False
     awaiting_sleep_duration: bool = False
 
+    pending_action: Optional[str] = None
+
 # =========================
 # Storage configuration
 # =========================
