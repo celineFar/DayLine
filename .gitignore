@@ -1,0 +1,10 @@
+__pychache__/
+test.png
+sleep_test.png
+appmap.log
+assistant*
+experiments*
+*.png
+*.ipynb
+.pytest_cache/
+timeline-482211-e978bbf1dd0b.json
