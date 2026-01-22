@@ -132,12 +132,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now = datetime.now()
         state.sleep_start_dt = now
 
+        cancel_sleep_reminder(context, state)
+
         job = context.job_queue.run_once(
             callback=sleep_reminder_job,
             when=SLEEP_REMINDER_DELAY,
             data={"user_id": user_id},
             name=f"sleep_reminder_{user_id}",
         )
+
         state.sleep_reminder_job_id = job.name
 
         await query.message.reply_text(
@@ -186,6 +189,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state.pending_action = None
 
         if action == "sleep_start":
+            cancel_sleep_reminder(context, state)
+
             now = datetime.now()
             state.sleep_start_dt = now
 
@@ -206,7 +211,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif action == "sleep_end":
             start_dt = state.sleep_start_dt
             end_dt = datetime.now()
-
+            cancel_sleep_reminder(context, state)
             sleep_service.record_sleep_end(
                 user_id=user_id,
                 start_dt=start_dt,
@@ -246,6 +251,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         start_dt = state.sleep_start_dt
         end_dt = start_dt + timedelta(hours=8)
 
+        cancel_sleep_reminder(context, state)
         sleep_service.record_sleep_end(
             user_id=user_id,
             start_dt=start_dt,
@@ -277,6 +283,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state.awaiting_sleep_start_time = False
         start_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
         state.sleep_start_dt = start_dt
+        cancel_sleep_reminder(context, state)
+
+        job = context.job_queue.run_once(
+            callback=sleep_reminder_job,
+            when=SLEEP_REMINDER_DELAY,
+            data={"user_id": user_id},
+            name=f"sleep_reminder_{user_id}",
+        )
+        state.sleep_reminder_job_id = job.name
 
         await update.message.reply_text(
             f"😴 Sleep start set to {start_dt.strftime('%Y-%m-%d %H:%M')}",
@@ -289,6 +304,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state.awaiting_wake_time = False
         wake_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
 
+        cancel_sleep_reminder(context, state)
         sleep_service.record_sleep_end(
             user_id=user_id,
             start_dt=state.sleep_start_dt,
@@ -305,6 +321,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         hours = float(text)
         end_dt = state.sleep_start_dt + timedelta(hours=hours)
 
+        cancel_sleep_reminder(context, state)
         sleep_service.record_sleep_end(
             user_id=user_id,
             start_dt=state.sleep_start_dt,
@@ -380,14 +397,28 @@ async def sleep_reminder_job(context: ContextTypes.DEFAULT_TYPE):
     user_id = context.job.data["user_id"]
     state = get_state(user_id)
 
-    if state.sleep_start_dt is None:
+    if (
+        state.sleep_start_dt is None
+        or state.sleep_reminder_job_id != context.job.name
+    ):
         return
-
+    
+    #   TODO: make the time lapsed dynamic
+    hours = int((datetime.now() - state.sleep_start_dt).total_seconds() // 3600)
     await context.bot.send_message(
         chat_id=user_id,
         text=(
-            "⏰ You started sleep 10 hours ago.\n\n"
+            f"⏰ You started sleep {hours} hours ago.\n\n"
             "How would you like to record your wake up?"
         ),
         reply_markup=sleep_resolution_keyboard(),
     )
+
+
+def cancel_sleep_reminder(context, state):
+    if state.sleep_reminder_job_id:
+        for job in context.job_queue.jobs():
+            if job.name == state.sleep_reminder_job_id:
+                job.schedule_removal()
+                break
+        state.sleep_reminder_job_id = None

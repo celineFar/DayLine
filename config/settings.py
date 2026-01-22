@@ -2,10 +2,16 @@
 
 SERVICE_ACCOUNT_FILE = "timeline-482211-e978bbf1dd0b.json"
 
+# SPREADSHEET_URL = (
+#     "https://docs.google.com/spreadsheets/d/"
+#     "1c2HXhQJjaTUb-KyRJczOOvpibVAekM_xKvmjK2bDWf0/edit"
+# )
+
 SPREADSHEET_URL = (
     "https://docs.google.com/spreadsheets/d/"
-    "1c2HXhQJjaTUb-KyRJczOOvpibVAekM_xKvmjK2bDWf0/edit"
+    "1m-UEmHicPNo793ddSdToBydFsV42WsRhcUzQy9SqLXA/edit?gid=0#gid=0"
 )
+
 
 # SHEET_NAMES = ["Work", "Thesis", "Extra"]
 SHEET_NAMES = ["Work", "Thesis", "Extra", "Sleep"]
