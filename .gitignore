@@ -27,3 +27,5 @@ state/*.json
 
 # State directory
 state/
+
+user_state.json

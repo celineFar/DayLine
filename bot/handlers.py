@@ -12,6 +12,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram import InputMediaPhoto
 
 from bot.state import get_state
 from bot.keyboards import (
@@ -101,20 +102,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- Navigation ----------
     elif data == "record":
-        await query.message.reply_text(
+        await query.message.edit_text(
             "Sleep tracking:",
             reply_markup=record_keyboard(),
         )
 
     elif data == "back_home":
-        await query.message.reply_text(
+        await query.message.edit_text(
             "Welcome! What would you like to do?",
             reply_markup=start_keyboard(),
         )
 
     # ---------- Sleep start (choice) ----------
     elif data == "sleep_start":
-        await query.message.reply_text(
+        await query.message.edit_text(
             "How would you like to record sleep start?",
             reply_markup=sleep_start_choice_keyboard(),
         )
@@ -122,7 +123,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "sleep_start_now":
         if state.sleep_start_dt is not None:
             state.pending_action = "sleep_start"
-            await query.message.reply_text(
+            await query.message.edit_text(
                 "⚠️ You already have a sleep session started.\n"
                 "Do you want to overwrite the existing start time?",
                 reply_markup=overwrite_confirm_keyboard(),
@@ -143,7 +144,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         state.sleep_reminder_job_id = job.name
 
-        await query.message.reply_text(
+        await query.message.edit_text(
             f"😴 Sleep start recorded at {now.strftime('%Y-%m-%d %H:%M')}",
             reply_markup=record_keyboard(),
         )
@@ -164,14 +165,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        await query.message.reply_text(
+        await query.message.edit_text(
             "How would you like to record wake up?",
             reply_markup=wake_up_choice_keyboard(),
         )
 
     elif data == "sleep_end_now":
         state.pending_action = "sleep_end"
-        await query.message.reply_text(
+        await query.message.edit_text(
             "⚠️ Are you sure you want to record wake up now?",
             reply_markup=overwrite_confirm_keyboard(),
         )
@@ -371,7 +372,19 @@ async def send_or_update_preview(
     state = get_state(user_id)
 
     png_bytes = render_timeline_png(start_date, end_date)
-    image = InputFile(io.BytesIO(png_bytes), filename="timeline.png")
+    # image = InputFile(io.BytesIO(png_bytes), filename="timeline.png")
+
+
+    image_file = InputFile(io.BytesIO(png_bytes), filename="timeline.png")
+    media = InputMediaPhoto(media=image_file)
+
+    if state.preview_message_id:
+        await context.bot.edit_message_media(
+            chat_id=chat_id,
+            message_id=state.preview_message_id,
+            media=media,
+            reply_markup=preview_range_keyboard(),
+        )
 
     if state.preview_message_id:
         await context.bot.edit_message_media(
