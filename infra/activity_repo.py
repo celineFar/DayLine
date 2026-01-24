@@ -1,8 +1,8 @@
 # infra/activity_repo.py
 
+import gspread
 import pandas as pd
 from datetime import datetime, timedelta, time
-
 
 from config.settings import SHEET_NAMES
 from infra.sheets_client import open_spreadsheet
@@ -53,7 +53,7 @@ def load_activities(start_date=None, end_date=None):
 def _get_or_create_sleep_sheet(spreadsheet):
     try:
         return spreadsheet.worksheet("Sleep")
-    except Exception:
+    except gspread.exceptions.WorksheetNotFound:
         return spreadsheet.add_worksheet(
             title="Sleep",
             rows=1000,

@@ -1,9 +1,12 @@
 import json
+import logging
 import os
 import atexit
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Optional, Dict
+
+logger = logging.getLogger(__name__)
 
 
 # =========================
@@ -23,8 +26,16 @@ class UserState:
     # Sleep resolution input modes
     awaiting_wake_time: bool = False
     awaiting_sleep_duration: bool = False
+    awaiting_sleep_start_time: bool = False
 
     pending_action: Optional[str] = None
+
+    def clear_input_flags(self) -> None:
+        """Reset all awaiting_* flags to ensure mutual exclusivity."""
+        self.awaiting_custom_range = False
+        self.awaiting_wake_time = False
+        self.awaiting_sleep_duration = False
+        self.awaiting_sleep_start_time = False
 
 # =========================
 # Storage configuration
@@ -70,15 +81,15 @@ def load_state_from_disk() -> None:
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as f:
             raw = json.load(f)
-    except json.JSONDecodeError:
-        # Corrupted file – start clean
+    except json.JSONDecodeError as e:
+        logger.error("Corrupted state file, starting clean: %s", e)
         return
 
     for user_id, state_data in raw.items():
         try:
             _USER_STATE_CACHE[int(user_id)] = _deserialize_state(state_data)
-        except Exception:
-            # Skip malformed entries
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning("Skipping malformed state for user %s: %s", user_id, e)
             continue
 
 

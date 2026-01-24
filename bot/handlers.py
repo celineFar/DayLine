@@ -94,6 +94,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "preview_custom":
+        state.clear_input_flags()
         state.awaiting_custom_range = True
         await query.message.reply_text(
             "Send a date range like:\n`2025-12-01 to 2025-12-07`",
@@ -150,6 +151,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "sleep_start_manual":
+        state.clear_input_flags()
         state.awaiting_sleep_start_time = True
         await query.message.reply_text(
             "Enter sleep start time like:\n`YYYY-MM-DD HH:MM`",
@@ -178,6 +180,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "sleep_end_manual":
+        state.clear_input_flags()
         state.awaiting_wake_time = True
         await query.message.reply_text(
             "Send wake up time like:\n`YYYY-MM-DD HH:MM`",
@@ -211,13 +214,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif action == "sleep_end":
             start_dt = state.sleep_start_dt
+            if start_dt is None:
+                await query.message.reply_text(
+                    "No sleep start time found.",
+                    reply_markup=record_keyboard(),
+                )
+                return
+
             end_dt = datetime.now()
             cancel_sleep_reminder(context, state)
-            sleep_service.record_sleep_end(
-                user_id=user_id,
-                start_dt=start_dt,
-                end_dt=end_dt,
-            )
+
+            try:
+                sleep_service.record_sleep_end(
+                    user_id=user_id,
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                )
+            except ValueError as e:
+                await query.message.reply_text(f"Error: {e}")
+                return
 
             cleanup_sleep_state(state)
 
@@ -235,6 +250,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- Reminder resolution ----------
     elif data == "sleep_fix_time":
+        state.clear_input_flags()
         state.awaiting_wake_time = True
         await query.message.reply_text(
             "Send wake up time like:\n`YYYY-MM-DD HH:MM`",
@@ -242,6 +258,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "sleep_fix_duration":
+        state.clear_input_flags()
         state.awaiting_sleep_duration = True
         await query.message.reply_text(
             "Enter sleep duration in hours (e.g. `7.5`)",
@@ -250,14 +267,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "sleep_fix_8h":
         start_dt = state.sleep_start_dt
+        if start_dt is None:
+            await query.message.reply_text(
+                "No sleep start time found.",
+                reply_markup=record_keyboard(),
+            )
+            return
+
         end_dt = start_dt + timedelta(hours=8)
 
         cancel_sleep_reminder(context, state)
-        sleep_service.record_sleep_end(
-            user_id=user_id,
-            start_dt=start_dt,
-            end_dt=end_dt,
-        )
+
+        try:
+            sleep_service.record_sleep_end(
+                user_id=user_id,
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+        except ValueError as e:
+            await query.message.reply_text(f"Error: {e}")
+            return
 
         cleanup_sleep_state(state)
 
@@ -280,9 +309,28 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = get_state(user_id)
 
     # Manual sleep start
-    if getattr(state, "awaiting_sleep_start_time", False):
-        state.awaiting_sleep_start_time = False
-        start_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+    if state.awaiting_sleep_start_time:
+        state.clear_input_flags()
+        try:
+            start_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid format. Please use: `YYYY-MM-DD HH:MM`\n"
+                "Example: `2025-01-20 23:30`",
+                parse_mode="Markdown",
+            )
+            state.awaiting_sleep_start_time = True
+            return
+
+        # Validate: not too far in the future
+        now = datetime.now()
+        if start_dt > now + timedelta(hours=1):
+            await update.message.reply_text(
+                "Sleep start time cannot be in the future.",
+                reply_markup=record_keyboard(),
+            )
+            return
+
         state.sleep_start_dt = start_dt
         cancel_sleep_reminder(context, state)
 
@@ -302,15 +350,43 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Manual wake up
     if state.awaiting_wake_time:
-        state.awaiting_wake_time = False
-        wake_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+        state.clear_input_flags()
+        try:
+            wake_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid format. Please use: `YYYY-MM-DD HH:MM`\n"
+                "Example: `2025-01-21 07:30`",
+                parse_mode="Markdown",
+            )
+            state.awaiting_wake_time = True
+            return
+
+        if state.sleep_start_dt is None:
+            await update.message.reply_text(
+                "No sleep start time found. Please record sleep start first.",
+                reply_markup=record_keyboard(),
+            )
+            return
+
+        if wake_dt <= state.sleep_start_dt:
+            await update.message.reply_text(
+                f"Wake time must be after sleep start ({state.sleep_start_dt.strftime('%Y-%m-%d %H:%M')}).",
+                reply_markup=record_keyboard(),
+            )
+            state.awaiting_wake_time = True
+            return
 
         cancel_sleep_reminder(context, state)
-        sleep_service.record_sleep_end(
-            user_id=user_id,
-            start_dt=state.sleep_start_dt,
-            end_dt=wake_dt,
-        )
+        try:
+            sleep_service.record_sleep_end(
+                user_id=user_id,
+                start_dt=state.sleep_start_dt,
+                end_dt=wake_dt,
+            )
+        except ValueError as e:
+            await update.message.reply_text(f"Error: {e}")
+            return
 
         cleanup_sleep_state(state)
         await update.message.reply_text("✅ Sleep saved.")
@@ -318,16 +394,45 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Duration input
     if state.awaiting_sleep_duration:
-        state.awaiting_sleep_duration = False
-        hours = float(text)
+        state.clear_input_flags()
+        try:
+            hours = float(text)
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid number. Please enter hours as a number.\n"
+                "Example: `7.5`",
+                parse_mode="Markdown",
+            )
+            state.awaiting_sleep_duration = True
+            return
+
+        if hours <= 0 or hours > 24:
+            await update.message.reply_text(
+                "Sleep duration must be between 0 and 24 hours.",
+                reply_markup=record_keyboard(),
+            )
+            state.awaiting_sleep_duration = True
+            return
+
+        if state.sleep_start_dt is None:
+            await update.message.reply_text(
+                "No sleep start time found. Please record sleep start first.",
+                reply_markup=record_keyboard(),
+            )
+            return
+
         end_dt = state.sleep_start_dt + timedelta(hours=hours)
 
         cancel_sleep_reminder(context, state)
-        sleep_service.record_sleep_end(
-            user_id=user_id,
-            start_dt=state.sleep_start_dt,
-            end_dt=end_dt,
-        )
+        try:
+            sleep_service.record_sleep_end(
+                user_id=user_id,
+                start_dt=state.sleep_start_dt,
+                end_dt=end_dt,
+            )
+        except ValueError as e:
+            await update.message.reply_text(f"Error: {e}")
+            return
 
         cleanup_sleep_state(state)
         await update.message.reply_text("✅ Sleep saved.")
@@ -335,8 +440,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Custom preview
     if state.awaiting_custom_range:
-        state.awaiting_custom_range = False
-        start, end = [t.strip() for t in text.split("to")]
+        state.clear_input_flags()
+        try:
+            parts = text.split("to")
+            if len(parts) != 2:
+                raise ValueError("Missing 'to' separator")
+            start, end = [t.strip() for t in parts]
+            # Validate date format
+            datetime.strptime(start, "%Y-%m-%d")
+            datetime.strptime(end, "%Y-%m-%d")
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid format. Please use: `YYYY-MM-DD to YYYY-MM-DD`\n"
+                "Example: `2025-01-01 to 2025-01-07`",
+                parse_mode="Markdown",
+            )
+            state.awaiting_custom_range = True
+            return
 
         await send_or_update_preview(
             update=update,
@@ -371,32 +491,36 @@ async def send_or_update_preview(
     chat_id = update.effective_chat.id
     state = get_state(user_id)
 
-    png_bytes = render_timeline_png(start_date, end_date)
-    # image = InputFile(io.BytesIO(png_bytes), filename="timeline.png")
-
+    try:
+        png_bytes = render_timeline_png(start_date, end_date)
+    except Exception as e:
+        logger.error("Failed to render timeline: %s", e)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Failed to generate preview. Please check the date range.",
+        )
+        return
 
     image_file = InputFile(io.BytesIO(png_bytes), filename="timeline.png")
-    media = InputMediaPhoto(media=image_file)
 
     if state.preview_message_id:
-        await context.bot.edit_message_media(
-            chat_id=chat_id,
-            message_id=state.preview_message_id,
-            media=media,
-            reply_markup=preview_range_keyboard(),
-        )
+        try:
+            media = InputMediaPhoto(media=image_file)
+            await context.bot.edit_message_media(
+                chat_id=chat_id,
+                message_id=state.preview_message_id,
+                media=media,
+                reply_markup=preview_range_keyboard(),
+            )
+        except Exception as e:
+            logger.warning("Failed to edit message, sending new: %s", e)
+            state.preview_message_id = None
+            image_file = InputFile(io.BytesIO(png_bytes), filename="timeline.png")
 
-    if state.preview_message_id:
-        await context.bot.edit_message_media(
-            chat_id=chat_id,
-            message_id=state.preview_message_id,
-            media=image,
-            reply_markup=preview_range_keyboard(),
-        )
-    else:
+    if not state.preview_message_id:
         msg = await context.bot.send_photo(
             chat_id=chat_id,
-            photo=image,
+            photo=image_file,
             reply_markup=preview_range_keyboard(),
         )
         state.preview_message_id = msg.message_id
@@ -415,13 +539,22 @@ async def sleep_reminder_job(context: ContextTypes.DEFAULT_TYPE):
         or state.sleep_reminder_job_id != context.job.name
     ):
         return
-    
-    #   TODO: make the time lapsed dynamic
-    hours = int((datetime.now() - state.sleep_start_dt).total_seconds() // 3600)
+
+    elapsed = datetime.now() - state.sleep_start_dt
+    total_minutes = int(elapsed.total_seconds() // 60)
+    hours, minutes = divmod(total_minutes, 60)
+
+    if hours > 0 and minutes > 0:
+        time_str = f"{hours}h {minutes}m"
+    elif hours > 0:
+        time_str = f"{hours} hour{'s' if hours != 1 else ''}"
+    else:
+        time_str = f"{minutes} minute{'s' if minutes != 1 else ''}"
+
     await context.bot.send_message(
         chat_id=user_id,
         text=(
-            f"⏰ You started sleep {hours} hours ago.\n\n"
+            f"⏰ You started sleep {time_str} ago.\n\n"
             "How would you like to record your wake up?"
         ),
         reply_markup=sleep_resolution_keyboard(),

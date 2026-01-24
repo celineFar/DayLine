@@ -1,37 +1,37 @@
 # config/settings.py
 
-SERVICE_ACCOUNT_FILE = "timeline-482211-e978bbf1dd0b.json"
+import os
+from datetime import timedelta
+from dotenv import load_dotenv
 
-# SPREADSHEET_URL = (
-#     "https://docs.google.com/spreadsheets/d/"
-#     "1c2HXhQJjaTUb-KyRJczOOvpibVAekM_xKvmjK2bDWf0/edit"
-# )
-
-SPREADSHEET_URL = (
-    "https://docs.google.com/spreadsheets/d/"
-    "1m-UEmHicPNo793ddSdToBydFsV42WsRhcUzQy9SqLXA/edit?gid=0#gid=0"
-)
+load_dotenv()
 
 
-# SHEET_NAMES = ["Work", "Thesis", "Extra"]
+def _require_env(name: str) -> str:
+    """Get required environment variable or raise an error."""
+    value = os.getenv(name)
+    if not value:
+        raise ValueError(f"Missing required environment variable: {name}")
+    return value
+
+
+# Credentials - loaded from environment variables
+TELEGRAM_BOT_TOKEN = _require_env("TELEGRAM_BOT_TOKEN")
+SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json")
+SPREADSHEET_URL = _require_env("SPREADSHEET_URL")
+
+# Sheet configuration
 SHEET_NAMES = ["Work", "Thesis", "Extra", "Sleep"]
-
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
+# Time constants
 DAY_MINUTES = 1440
 MAX_SLEEP_START = 4 * 60  # 04:00
 
-TELEGRAM_BOT_TOKEN = "8513105895:AAH2n86RKKu01ypbgwLE80iygjgeBjR5VMQ"
-
-
-from datetime import timedelta
-import os
-
 SLEEP_REMINDER_DELAY = timedelta(
-    # seconds=int(os.getenv("SLEEP_REMINDER_SECONDS", 10 * 60 * 60))
-    seconds= 60 * 10
+    seconds=int(os.getenv("SLEEP_REMINDER_SECONDS", 10 * 60 * 60))  # Default: 10 hours
 )

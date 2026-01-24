@@ -1,11 +1,27 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.json
+!package.json
+
+# Service account files (never commit these)
+*service_account*.json
+*credentials*.json
+
+# Legacy/specific exclusions
 appmap.log
 assistant*
 experiments*
-timeline-482211-e978bbf1dd0b.json
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
 
 # Pytest
 .pytest_cache/
@@ -17,15 +33,7 @@ __pycache__/
 *.log
 
 # Runtime / generated data
-state/*.json
+state/
 
 # Images (if not source assets)
 *.png
-
-# markdown files
-*.md
-
-# State directory
-state/
-
-user_state.json
