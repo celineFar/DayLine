@@ -17,6 +17,7 @@ Experiments/
 Logos/
 notes/
 state/
+state/
 
 # Python
 __pycache__/
@@ -43,3 +44,5 @@ state/
 *.png
 
 timeline-482211-e978bbf1dd0b.json
+state/user_state.json
+!Logo.png
