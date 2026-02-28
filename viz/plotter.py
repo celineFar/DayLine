@@ -155,8 +155,6 @@ def render_timeline_png(wide) -> tuple[bytes, dict]:
 
         ax_table.set_title("Summary", fontsize=11, fontweight="bold")
 
-    plt.tight_layout()
-
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
     plt.close(fig)

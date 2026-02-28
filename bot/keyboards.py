@@ -43,6 +43,9 @@ def log_menu_keyboard():
             InlineKeyboardButton("🏃 Log Other Activity", callback_data="activity_select"),
         ],
         [
+            InlineKeyboardButton("🗑️ Delete Entry", callback_data="delete_entry"),
+        ],
+        [
             InlineKeyboardButton("🔙 Back", callback_data="back_home"),
         ],
     ])
@@ -193,6 +196,30 @@ def snooze_duration_keyboard():
         [
             InlineKeyboardButton("❌ Cancel", callback_data="cancel_snooze"),
         ],
+    ])
+
+
+def delete_entry_list_keyboard(entries):
+    """List of recent entries as delete buttons, newest first."""
+    rows = []
+    for entry in entries[:15]:
+        label = entry["label"]
+        if len(label) > 38:
+            label = label[:37] + "…"
+        key = f"del_row:{entry['sheet']}:{entry['row_num']}"
+        rows.append([InlineKeyboardButton(label, callback_data=key)])
+    if not entries:
+        rows.append([InlineKeyboardButton("(no entries in last 14 days)", callback_data="noop")])
+    rows.append([InlineKeyboardButton("🔙 Back", callback_data="log_activity")])
+    return InlineKeyboardMarkup(rows)
+
+
+def confirm_delete_keyboard(sheet, row_num):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🗑️ Yes, delete", callback_data=f"confirm_del:{sheet}:{row_num}"),
+            InlineKeyboardButton("❌ Cancel", callback_data="delete_entry"),
+        ]
     ])
 
 

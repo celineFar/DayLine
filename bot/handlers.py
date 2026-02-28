@@ -33,9 +33,12 @@ from bot.keyboards import (
     switch_confirm_keyboard,
     idle_reminder_keyboard,
     snooze_duration_keyboard,
+    delete_entry_list_keyboard,
+    confirm_delete_keyboard,
 )
 from app import sleep_service
 from app import activity_service
+from infra.activity_repo import get_recent_rows, delete_sheet_row
 from config.settings import SLEEP_REMINDER_DELAY, IDLE_REMINDER_INTERVAL, MAX_SNOOZE_HOURS
 from app.preview_service import render_timeline_png
 from domain.ranges import last_n_days, last_month, today, yesterday, this_week
@@ -268,6 +271,51 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=start_keyboard(),
             )
 
+    # ========== Delete Entry ==========
+    elif data == "delete_entry":
+        state.clear_input_flags()
+        entries = get_recent_rows(n_days=14)
+        await query.message.edit_text(
+            "Select an entry to delete (last 14 days, newest first):",
+            reply_markup=delete_entry_list_keyboard(entries),
+        )
+
+    elif data.startswith("del_row:"):
+        _, sheet_name, row_num_str = data.split(":", 2)
+        row_num = int(row_num_str)
+        entries = get_recent_rows(n_days=14)
+        entry = next(
+            (e for e in entries if e["sheet"] == sheet_name and e["row_num"] == row_num),
+            None,
+        )
+        if entry is None:
+            await query.message.edit_text(
+                "Entry not found — it may have already been deleted.",
+                reply_markup=log_menu_keyboard(),
+            )
+        else:
+            await query.message.edit_text(
+                f"Delete this entry?\n\n`{entry['label']}`",
+                parse_mode="Markdown",
+                reply_markup=confirm_delete_keyboard(sheet_name, row_num),
+            )
+
+    elif data.startswith("confirm_del:"):
+        _, sheet_name, row_num_str = data.split(":", 2)
+        row_num = int(row_num_str)
+        try:
+            delete_sheet_row(sheet_name, row_num)
+            await query.message.edit_text(
+                "Entry deleted.",
+                reply_markup=log_menu_keyboard(),
+            )
+        except Exception as e:
+            logger.error("Failed to delete row %d from %s: %s", row_num, sheet_name, e)
+            await query.message.edit_text(
+                "Failed to delete the entry. Please try again.",
+                reply_markup=log_menu_keyboard(),
+            )
+
     # ========== Activity Selection ==========
     elif data == "activity_select":
         state.clear_input_flags()
@@ -401,6 +449,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=start_keyboard(),
             )
             return
+        except Exception:
+            logger.exception("Failed to record activity")
+            await query.message.edit_text(
+                "Something went wrong saving the activity. Please try again.",
+                reply_markup=start_keyboard(),
+            )
+            return
 
         duration = _format_duration(start_dt, end_dt)
         state.current_activity = None
@@ -456,6 +511,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except ValueError as e:
                 await query.message.edit_text(f"Error ending current activity: {e}")
+                return
+            except Exception:
+                logger.exception("Failed to record activity on switch")
+                await query.message.edit_text(
+                    "Something went wrong saving the activity. Please try again.",
+                    reply_markup=start_keyboard(),
+                )
                 return
 
             duration = _format_duration(state.activity_start_dt, end_dt)
@@ -628,6 +690,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=record_keyboard(),
                 )
                 return
+            except Exception:
+                logger.exception("Failed to record sleep end")
+                await query.message.edit_text(
+                    "Something went wrong saving sleep. Please try again.",
+                    reply_markup=record_keyboard(),
+                )
+                return
 
             cleanup_sleep_state(state)
             save_state_to_disk()
@@ -762,6 +831,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except ValueError as e:
             await query.message.reply_text(f"Error: {e}")
+            return
+        except Exception:
+            logger.exception("Failed to record 8h sleep")
+            await query.message.reply_text(
+                "Something went wrong saving sleep. Please try again.",
+                reply_markup=record_keyboard(),
+            )
             return
 
         cleanup_sleep_state(state)
@@ -932,6 +1008,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=record_keyboard(),
             )
             return
+        except Exception:
+            logger.exception("Failed to record wake time")
+            await update.message.reply_text(
+                "Something went wrong saving sleep. Please try again.",
+                reply_markup=record_keyboard(),
+            )
+            return
 
         cleanup_sleep_state(state)
         save_state_to_disk()
@@ -989,6 +1072,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError as e:
             await update.message.reply_text(
                 f"Error: {e}",
+                reply_markup=record_keyboard(),
+            )
+            return
+        except Exception:
+            logger.exception("Failed to record sleep duration")
+            await update.message.reply_text(
+                "Something went wrong saving sleep. Please try again.",
                 reply_markup=record_keyboard(),
             )
             return
@@ -1106,6 +1196,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except ValueError as e:
                 await update.message.reply_text(
                     f"Error: {e}",
+                    reply_markup=start_keyboard(),
+                )
+                return
+            except Exception:
+                logger.exception("Failed to record activity with edited end time")
+                await update.message.reply_text(
+                    "Something went wrong saving the activity. Please try again.",
                     reply_markup=start_keyboard(),
                 )
                 return

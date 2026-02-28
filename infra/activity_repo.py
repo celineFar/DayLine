@@ -182,6 +182,74 @@ def append_activity_record(date, start_time, end_time, activity_name, user_id=No
     invalidate_activities_cache()
 
 
+def get_recent_rows(n_days=14):
+    """
+    Returns list of dicts with raw row info for entries in the last n_days.
+    Each dict: {sheet, row_num, date, start, end, label}
+    row_num is 1-indexed (header is row 1, data starts at row 2).
+    Sorted newest first.
+    """
+    spreadsheet = open_spreadsheet()
+    cutoff = (datetime.now() - timedelta(days=n_days)).date()
+    entries = []
+
+    sheet_configs = [
+        ("Activities", True),
+        ("Sleep", False),
+    ]
+
+    for sheet_name, has_activity_col in sheet_configs:
+        try:
+            ws = spreadsheet.worksheet(sheet_name)
+            values = ws.get_all_values()
+        except Exception:
+            continue
+
+        if not values:
+            continue
+
+        for i, row in enumerate(values[1:], start=2):  # header is row 1
+            date_str = row[0].strip() if row else ""
+            if not date_str:
+                continue
+            try:
+                d = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+
+            if d < cutoff:
+                continue
+
+            start_str = row[1][:5] if len(row) > 1 else ""
+            end_str = row[2][:5] if len(row) > 2 else ""
+
+            if has_activity_col:
+                activity = row[3].strip() if len(row) > 3 else "?"
+                label = f"{date_str} {start_str}-{end_str} {activity}"
+            else:
+                label = f"{date_str} {start_str}-{end_str} Sleep"
+
+            entries.append({
+                "sheet": sheet_name,
+                "row_num": i,
+                "date": date_str,
+                "start": start_str,
+                "label": label,
+            })
+
+    entries.sort(key=lambda e: (e["date"], e["start"]), reverse=True)
+    return entries
+
+
+def delete_sheet_row(sheet_name, row_num):
+    """Delete a specific row from the given sheet. row_num is 1-indexed."""
+    spreadsheet = open_spreadsheet()
+    ws = spreadsheet.worksheet(sheet_name)
+    ws.delete_rows(row_num)
+    invalidate_activities_cache()
+    logger.debug("Deleted row %d from sheet '%s'", row_num, sheet_name)
+
+
 def append_sleep_record(date, start_time, end_time, user_id=None):
     """
     date: YYYY-MM-DD or date
