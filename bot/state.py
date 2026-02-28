@@ -18,6 +18,8 @@ class UserState:
     # Preview / UI
     awaiting_custom_range: bool = False
     preview_message_id: Optional[int] = None
+    last_preview_start: Optional[str] = None
+    last_preview_end: Optional[str] = None
 
     # Sleep tracking
     sleep_start_dt: Optional[datetime] = None
@@ -30,12 +32,40 @@ class UserState:
 
     pending_action: Optional[str] = None
 
+    # Tracks where to return when canceling input
+    # Values: "home", "preview", "record", "sleep_start", "sleep_end", "reminder",
+    #         "activity_select", "activity_time"
+    return_to: Optional[str] = None
+
+    # Activity tracking
+    activities: Optional[list] = None  # saved activity names
+    current_activity: Optional[str] = None  # ongoing activity name
+    activity_start_dt: Optional[datetime] = None  # ongoing activity start time
+
+    # Activity input modes
+    selected_activity: Optional[str] = None
+    pending_new_activity: Optional[str] = None
+    awaiting_new_activity_name: bool = False
+    awaiting_activity_start_time: bool = False
+
+    # Idle reminder
+    idle_reminder_job_id: Optional[str] = None
+    last_interaction_date: Optional[str] = None
+
+    # Snooze
+    snooze_until: Optional[datetime] = None
+    awaiting_snooze_duration: bool = False
+
     def clear_input_flags(self) -> None:
         """Reset all awaiting_* flags to ensure mutual exclusivity."""
         self.awaiting_custom_range = False
         self.awaiting_wake_time = False
         self.awaiting_sleep_duration = False
         self.awaiting_sleep_start_time = False
+        self.awaiting_new_activity_name = False
+        self.awaiting_activity_start_time = False
+        self.awaiting_snooze_duration = False
+        self.return_to = None
 
 # =========================
 # Storage configuration
@@ -56,14 +86,19 @@ _USER_STATE_CACHE: Dict[int, UserState] = {}
 
 def _serialize_state(state: UserState) -> dict:
     data = asdict(state)
-    if data["sleep_start_dt"]:
-        data["sleep_start_dt"] = data["sleep_start_dt"].isoformat()
+    for key in ("sleep_start_dt", "activity_start_dt", "snooze_until"):
+        if data.get(key):
+            data[key] = data[key].isoformat()
     return data
 
 
 def _deserialize_state(data: dict) -> UserState:
-    if data.get("sleep_start_dt"):
-        data["sleep_start_dt"] = datetime.fromisoformat(data["sleep_start_dt"])
+    for key in ("sleep_start_dt", "activity_start_dt", "snooze_until"):
+        if data.get(key):
+            data[key] = datetime.fromisoformat(data[key])
+    # Drop unknown keys for backwards compatibility
+    known = {f.name for f in UserState.__dataclass_fields__.values()}
+    data = {k: v for k, v in data.items() if k in known}
     return UserState(**data)
 
 

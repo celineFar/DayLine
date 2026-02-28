@@ -1,11 +1,29 @@
 {
   "80841273": {
     "awaiting_custom_range": false,
-    "preview_message_id": 178,
-    "sleep_start_dt": "2026-01-22T13:06:35.728703",
-    "sleep_reminder_job_id": "sleep_reminder_80841273",
+    "preview_message_id": 230,
+    "last_preview_start": "2026-02-22",
+    "last_preview_end": "2026-02-28",
+    "sleep_start_dt": null,
+    "sleep_reminder_job_id": null,
     "awaiting_wake_time": false,
     "awaiting_sleep_duration": false,
-    "pending_action": null
+    "awaiting_sleep_start_time": false,
+    "pending_action": null,
+    "return_to": null,
+    "activities": [
+      "Cooking",
+      "Cleaning"
+    ],
+    "current_activity": "Cleaning",
+    "activity_start_dt": "2026-02-28T17:45:39.046579",
+    "selected_activity": null,
+    "pending_new_activity": null,
+    "awaiting_new_activity_name": false,
+    "awaiting_activity_start_time": false,
+    "idle_reminder_job_id": null,
+    "last_interaction_date": null,
+    "snooze_until": null,
+    "awaiting_snooze_duration": false
   }
 }

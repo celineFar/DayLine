@@ -13,6 +13,10 @@
 appmap.log
 assistant*
 experiments*
+Experiments/
+Logos/
+notes/
+state/
 
 # Python
 __pycache__/
@@ -37,3 +41,5 @@ state/
 
 # Images (if not source assets)
 *.png
+
+timeline-482211-e978bbf1dd0b.json
